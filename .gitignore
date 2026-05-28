@@ -24,5 +24,20 @@ lerna-debug.log*
 .tmp
 
 # prompt file
-.github
 .vscode
+
+# OS / editor artifacts
+.DS_Store
+Thumbs.db
+.idea/
+
+# Test and tooling outputs
+coverage/
+.nyc_output/
+
+# TypeScript incremental build cache
+*.tsbuildinfo
+
+# Additional local env variants
+.env.local
+.env.*.local
