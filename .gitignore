@@ -25,3 +25,4 @@ lerna-debug.log*
 
 # prompt file
 .github
+.vscode
