@@ -1,11 +1,17 @@
 # Nestjs specific
 /dist
-/node_modules
-/build
-/tmp
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+tmp/
+.temp/
+.tmp/
 
 # Logs
-logs
+logs/
 *.log
 npm-debug.log*
 pnpm-debug.log*
@@ -13,23 +19,18 @@ yarn-debug.log*
 yarn-error.log*
 lerna-debug.log*
 
-# dotenv environment variable files
+# Environment files
 .env
-.env.development
-.env.test
-.env.production
+.env.*
+!.env.example
 
-# temp directory
-.temp
-.tmp
+# Editor / IDE
+.vscode/
+.idea/
 
-# prompt file
-.vscode
-
-# OS / editor artifacts
+# OS artifacts
 .DS_Store
 Thumbs.db
-.idea/
 
 # Test and tooling outputs
 coverage/
@@ -37,12 +38,4 @@ coverage/
 
 # TypeScript incremental build cache
 *.tsbuildinfo
-
-# Additional local env variants
-.env.local
-.env.*.local
-
-.prettierrc
-.json
-.tsbuildinfo
-.config.mjs
+# TypeScript incremental build cache
