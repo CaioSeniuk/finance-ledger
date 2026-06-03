@@ -41,3 +41,8 @@ coverage/
 # Additional local env variants
 .env.local
 .env.*.local
+
+.prettierrc
+.json
+.tsbuildinfo
+.config.mjs
