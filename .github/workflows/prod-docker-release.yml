@@ -15,6 +15,9 @@ concurrency:
 env:
   IMAGE_NAME: finance-ledger
   IMAGE_REGISTRY: docker.io
+  IMAGE_SHA_REF: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+  IMAGE_LATEST_REF: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest
+  IMAGE_RELEASE_REF: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:prod-${{ github.run_number }}
 
 jobs:
   quality-gate:
@@ -99,26 +102,34 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Extract Docker metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=raw,value=latest
-            type=sha,format=long,prefix=sha-
-            type=raw,value=prod-${{ github.run_number }}
-
-      - name: Build and push
+      - name: Build image locally
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./docker/Dockerfile
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          push: false
+          load: true
+          tags: |
+            ${{ env.IMAGE_SHA_REF }}
+            ${{ env.IMAGE_LATEST_REF }}
+            ${{ env.IMAGE_RELEASE_REF }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Scan image for vulnerabilities
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.IMAGE_SHA_REF }}
+          format: table
+          severity: HIGH,CRITICAL
+          exit-code: 1
+
+      - name: Push image tags
+        run: |
+          docker push "${IMAGE_SHA_REF}"
+          docker push "${IMAGE_LATEST_REF}"
+          docker push "${IMAGE_RELEASE_REF}"
+
       - name: Image reference
-        run: echo "Published image → ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}"
+        id: image-ref
+        run: echo "value=${IMAGE_SHA_REF}" >> "$GITHUB_OUTPUT"
