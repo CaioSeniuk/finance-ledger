@@ -14,8 +14,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  IMAGE_NAME: finance-ledger
-  IMAGE_REGISTRY: docker.io
+  IMAGE_NAME: ${{ vars.IMAGE_NAME }}
+  IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY }}
 
 jobs:
   quality-gate:
@@ -86,9 +86,9 @@ jobs:
     if: github.event_name == 'pull_request' && github.event.pull_request.merged == true || github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/test/workflow-dispatch'
 
     env:
-      IMAGE_SHA_REF: ${{ secrets.DOCKERHUB_USERNAME }}/finance-ledger:sha-${{ github.sha }}
-      IMAGE_LATEST_REF: ${{ secrets.DOCKERHUB_USERNAME }}/finance-ledger:latest
-      IMAGE_RELEASE_REF: ${{ secrets.DOCKERHUB_USERNAME }}/finance-ledger:prod-${{ github.run_number }}
+      IMAGE_SHA_REF: ${{ secrets.DOCKERHUB_USERNAME }}/${{ vars.IMAGE_NAME }}:sha-${{ github.sha }}
+      IMAGE_LATEST_REF: ${{ secrets.DOCKERHUB_USERNAME }}/${{ vars.IMAGE_NAME }}:latest
+      IMAGE_RELEASE_REF: ${{ secrets.DOCKERHUB_USERNAME }}/${{ vars.IMAGE_NAME }}:prod-${{ github.run_number }}
 
     permissions:
       contents: read
