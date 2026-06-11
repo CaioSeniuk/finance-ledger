@@ -1,6 +1,7 @@
 name: Prod Docker Release
 
 on:
+  workflow_dispatch:
   pull_request:
     branches: [prod]
     types: [closed]
@@ -13,18 +14,27 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  IMAGE_NAME: finance-ledger
-  IMAGE_REGISTRY: docker.io
+  IMAGE_NAME: ${{ vars.IMAGE_NAME }}
+  IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY }}
 
 jobs:
   quality-gate:
     name: Lint, Tests and Build
     runs-on: ubuntu-latest
-    if: github.event.pull_request.merged == true
+    if: github.event_name == 'pull_request' && github.event.pull_request.merged == true || github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/test/workflow-dispatch'
+
+    permissions:
+      contents: read
+      security-events: write
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: typescript
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -34,6 +44,30 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Audit dependencies for vulnerabilities
+        run: npm audit --audit-level=moderate
+        continue-on-error: false
+
+      - name: Generate audit report (for documentation)
+        if: always()
+        run: npm audit --json > npm-audit-report.json 2>&1 || true
+
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit-report
+          path: npm-audit-report.json
+          retention-days: 30
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: /language:typescript
 
       - name: Lint
         run: npm run lint
@@ -48,6 +82,17 @@ jobs:
     name: Build and Push Docker image
     runs-on: ubuntu-latest
     needs: quality-gate
+
+    if: github.event_name == 'pull_request' && github.event.pull_request.merged == true || github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/test/workflow-dispatch'
+
+    env:
+      IMAGE_SHA_REF: ${{ secrets.DOCKERHUB_USERNAME }}/${{ vars.IMAGE_NAME }}:sha-${{ github.sha }}
+      IMAGE_LATEST_REF: ${{ secrets.DOCKERHUB_USERNAME }}/${{ vars.IMAGE_NAME }}:latest
+      IMAGE_RELEASE_REF: ${{ secrets.DOCKERHUB_USERNAME }}/${{ vars.IMAGE_NAME }}:prod-${{ github.run_number }}
+
+    permissions:
+      contents: read
+      id-token: write
 
     outputs:
       image-ref: ${{ steps.image-ref.outputs.value }}
@@ -66,44 +111,58 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Extract Docker metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=raw,value=latest
-            type=sha,format=long,prefix=sha-
-            type=raw,value=prod-${{ github.run_number }}
-
-      - name: Build and push
+      - name: Build image locally
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./docker/Dockerfile
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          push: false
+          load: true
+          tags: |
+            ${{ env.IMAGE_SHA_REF }}
+            ${{ env.IMAGE_LATEST_REF }}
+            ${{ env.IMAGE_RELEASE_REF }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Set deploy image reference
-        id: image-ref
-        run: echo "value=${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}" >> "$GITHUB_OUTPUT"
+      - name: Scan image for vulnerabilities
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.IMAGE_SHA_REF }}
+          format: table
+          severity: HIGH,CRITICAL
+          exit-code: 1
 
-  deploy:
-    name: Trigger deploy webhook
-    runs-on: ubuntu-latest
-    needs: build-and-push
-    if: ${{ secrets.DEPLOY_WEBHOOK_URL != '' }}
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.IMAGE_SHA_REF }}
+          format: spdx-json
+          output-file: sbom.spdx.json
 
-    steps:
-      - name: Trigger deployment
-        env:
-          DEPLOY_WEBHOOK_URL: ${{ secrets.DEPLOY_WEBHOOK_URL }}
-          IMAGE_REF: ${{ needs.build-and-push.outputs.image-ref }}
+      - name: Push image tags
         run: |
-          curl --fail --show-error --silent \
-            -X POST "$DEPLOY_WEBHOOK_URL" \
-            -H "Content-Type: application/json" \
-            -d "{\"image\":\"$IMAGE_REF\",\"sha\":\"${{ github.sha }}\",\"branch\":\"${{ github.ref_name }}\"}"
+          docker push "${IMAGE_SHA_REF}"
+          docker push "${IMAGE_LATEST_REF}"
+          docker push "${IMAGE_RELEASE_REF}"
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v4.1.0
+
+      - name: Sign image
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+        run: |
+          cosign sign --yes "${IMAGE_SHA_REF}"
+
+      - name: Verify image signature
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+        run: |
+          cosign verify "${IMAGE_SHA_REF}" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity-regexp "https://github.com/${{ github.repository }}/.github/workflows/.*@refs/heads/${{ github.ref_name }}"
+
+      - name: Image reference
+        id: image-ref
+        run: echo "value=${IMAGE_SHA_REF}" >> "$GITHUB_OUTPUT"
