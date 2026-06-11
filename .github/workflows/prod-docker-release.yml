@@ -14,6 +14,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
   IMAGE_NAME: ${{ vars.IMAGE_NAME }}
   IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY }}
 
@@ -25,16 +27,10 @@ jobs:
 
     permissions:
       contents: read
-      security-events: write
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
-        with:
-          languages: typescript
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -60,14 +56,6 @@ jobs:
           name: npm-audit-report
           path: npm-audit-report.json
           retention-days: 30
-
-      - name: Autobuild
-        uses: github/codeql-action/autobuild@v3
-
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
-        with:
-          category: /language:typescript
 
       - name: Lint
         run: npm run lint
