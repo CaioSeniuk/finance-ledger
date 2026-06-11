@@ -1,6 +1,7 @@
 name: Prod Docker Release
 
 on:
+  workflow_dispatch:
   pull_request:
     branches: [prod]
     types: [closed]
