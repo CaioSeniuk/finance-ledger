@@ -38,4 +38,6 @@ coverage/
 
 # TypeScript incremental build cache
 *.tsbuildinfo
-# TypeScript incremental build cache
+
+# Prisma generated client (run `npm run prisma:generate` to recreate)
+/src/generated/
