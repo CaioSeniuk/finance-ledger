@@ -71,7 +71,7 @@ The API will be available at `http://localhost:3000`.
 ## Run Published Image from Docker Hub
 
 ```bash
-docker pull caiohseniuk/finance-ledger:latest
+docker pull caiohseniuk/finance-ledger:v.0.0.1
 docker run --rm -p 3000:3000 caiohseniuk/finance-ledger:v0.0.1
 ```
 
