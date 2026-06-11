@@ -1,0 +1,68 @@
+// Immutable financial ledger schema.
+//
+// Design principles (see .github/copilot-instructions.md):
+// - Append-only: ledger records are never updated or deleted; corrections are
+//   modeled as new compensating transactions.
+// - Idempotency: every financial write carries a unique idempotency key.
+// - Derivable balance: account balance is the sum of postings, never a mutable
+//   column treated as the source of truth.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  runtime      = "nodejs"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// Posting direction for a double-entry ledger line.
+enum EntryDirection {
+  DEBIT
+  CREDIT
+}
+
+/// Lifecycle status of a transaction. The ledger is append-only, so a posted
+/// transaction is never mutated; a correction creates a new compensating one.
+enum TransactionStatus {
+  POSTED
+}
+
+/// A financial transaction intent that has been durably posted to the ledger.
+/// Acts as the aggregate root for its immutable ledger entries.
+model Transaction {
+  id                   String            @id @default(uuid()) @db.Uuid
+  idempotencyKey       String            @unique @map("idempotency_key")
+  type                 String
+  status               TransactionStatus @default(POSTED)
+  sourceAccountId      String            @map("source_account_id")
+  destinationAccountId String            @map("destination_account_id")
+  amount               BigInt
+  currency             String            @db.Char(3)
+  metadata             Json?
+  entries              LedgerEntry[]
+  createdAt            DateTime          @default(now()) @map("created_at")
+
+  @@index([sourceAccountId])
+  @@index([destinationAccountId])
+  @@map("transactions")
+}
+
+/// An immutable double-entry ledger line. Balances are derived by summing
+/// CREDIT minus DEBIT amounts per account.
+model LedgerEntry {
+  id            String         @id @default(uuid()) @db.Uuid
+  transactionId String         @map("transaction_id") @db.Uuid
+  transaction   Transaction    @relation(fields: [transactionId], references: [id])
+  accountId     String         @map("account_id")
+  direction     EntryDirection
+  amount        BigInt
+  currency      String         @db.Char(3)
+  createdAt     DateTime       @default(now()) @map("created_at")
+
+  @@index([accountId])
+  @@index([transactionId])
+  @@map("ledger_entries")
+}
